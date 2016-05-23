@@ -14,6 +14,7 @@ Algol is free and open hardware licensed under the [MIT license](https://en.wiki
 - [Getting Started](#getting-started)
 - [Software Details](#software-details)
 - [Directory Layout](#directory-layout)
+- [CPU Verification](#cpu-verification)
 - [Build the toolchain](#build-the-toolchain)
 - [License](#license)
 
@@ -46,7 +47,7 @@ This repository provides all you need to simulate and synthesize the processor:
 
 - Simulation done in python, using [MyHDL](http://myhdl.org/).
 - Software [toolchain](http://riscv.org/software-tools/) using gcc.
-- [Verification suit](http://riscv.org/software-tools/riscv-tests/) written in assembly:
+- [Verification suit](http://riscv.org/software-tools/riscv-tests/) written in assembly.
 
 ## Directory Layout
 

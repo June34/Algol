@@ -18,10 +18,23 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
+#define VECTOR_SZ 20
+
+int vector[VECTOR_SZ];
+
 int main(int argc, char* argv[]){
     (void)argc;
     (void)argv;
-    return 0;
+
+    int sum = 0;
+
+    for(int i = 0; i < VECTOR_SZ; i++)
+        vector[i] = i + 1;
+
+    for(int i = 0; i < VECTOR_SZ; i++)
+        sum += vector[i];
+
+    return sum;
 }
 
 

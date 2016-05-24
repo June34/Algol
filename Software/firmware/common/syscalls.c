@@ -18,9 +18,18 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
+
+// taken from syscalls.c @ riscv-tests repo.
+
+#include "encoding.h"
+
 #define SYS_write 64
 #define SYS_exit 93
 #define SYS_stats 1234
+
+#define read_csr_safe(reg) ({ register long __tmp asm("a0");    \
+            asm volatile ("csrr %0, " #reg : "=r"(__tmp));      \
+            __tmp; })
 
 static long syscall(long num, long arg0, long arg1, long arg2)
 {
@@ -32,6 +41,12 @@ static long syscall(long num, long arg0, long arg1, long arg2)
     return a0;
 }
 
+void tohost_exit(long code)
+{
+    write_csr(mtohost, (code << 1) | 1);
+    while (1);
+}
+
 void exit(int code){
     syscall(SYS_exit, code, 0, 0);
     while(1);
@@ -39,9 +54,18 @@ void exit(int code){
 
 long handle_trap(long cause, long epc, long regs[32]){
     // do some magic
-    (void)cause;
-    (void)regs;
-    while(1);
+    int *csr_ins;
+    asm("jal %0, 1f; nop; 1:" : "=r"(csr_ins));
+
+    if(cause == CAUSE_ILLEGAL_INSTRUCTION && (*(int *)epc & *csr_ins) == *csr_ins)
+        while(1);
+    else if(cause != CAUSE_USER_ECALL)
+        tohost_exit(1337);
+    else if(regs[17] == SYS_exit)
+        tohost_exit(regs[10]);
+    else
+        while(1);
+
     return epc + 4;
 }
 

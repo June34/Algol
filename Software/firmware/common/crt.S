@@ -100,7 +100,7 @@ _start:
 	eret
 
 trap_entry:
-  addi sp, sp, -272
+  addi sp, sp, -124
 
   SREG x1, 1*REGBYTES(sp)
   SREG x2, 2*REGBYTES(sp)
@@ -172,7 +172,7 @@ trap_entry:
   LREG x30, 30*REGBYTES(sp)
   LREG x31, 31*REGBYTES(sp)
 
-  addi sp, sp, 272
+  addi sp, sp, 124
   eret
 
 .section ".tdata.begin"

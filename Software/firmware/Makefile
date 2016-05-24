@@ -60,10 +60,10 @@ $(bmarks_riscv_dump): %.riscv.dump: %.riscv
 	$(RISCV_OBJDUMP) $< > $@
 
 %.o: %.c
-	$(RISCV_GCC) $(RISCV_GCC_OPTS) -c $(incs) $< -o $@
+	$(RISCV_GCC) -m32 $(RISCV_GCC_OPTS) -c $(incs) $< -o $@
 
 %.o: %.S
-	$(RISCV_GCC) $(RISCV_GCC_OPTS) -D__ASSEMBLY__=1 -c $(incs) $< -o $@
+	$(RISCV_GCC) -m32 $(RISCV_GCC_OPTS) -D__ASSEMBLY__=1 -c $(incs) $< -o $@
 
 riscv: $(bmarks_riscv_dump) $(bmarks_riscv_hex)
 

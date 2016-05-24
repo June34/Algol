@@ -30,6 +30,6 @@ test_riscv_objs = $(patsubst %.S, %.o, $(test_riscv_src))
 
 test_riscv_bin = test.riscv
 $(test_riscv_bin): $(test_c_objs) $(test_riscv_objs)
-	$(RISCV_LINK) $(test_c_objs) $(tests_riscv_objs) -o $(test_riscv_bin) $(RISCV_LINK_OPTS)
+	$(RISCV_LINK) -m32 $(test_c_objs) $(tests_riscv_objs) -o $(test_riscv_bin) $(RISCV_LINK_OPTS)
 
 junk += $(test_c_objs) $(test_riscv_objs) $(test_riscv_bin)

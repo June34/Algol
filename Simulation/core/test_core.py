@@ -23,7 +23,9 @@ from Core.core import Core
 from Simulation.core.memory import Memory
 from Core.wishbone import WishboneIntercon
 from myhdl import instance
+from myhdl import instances
 from myhdl import always
+from myhdl import always_comb
 from myhdl import Signal
 from myhdl import delay
 from myhdl import modbv
@@ -41,8 +43,15 @@ else:
 
 # Constans for simulation.
 TICK_PERIOD = 10
-TIMEOUT     = 10000
+TIMEOUT     = 20000
 RESET_TIME  = 5
+
+buffer = ""
+
+
+def add_buffer(char):
+    global buffer
+    buffer += char
 
 
 def core_testbench(hex_file):
@@ -57,13 +66,15 @@ def core_testbench(hex_file):
     rst = Signal(False)
     imem = WishboneIntercon()
     dmem = WishboneIntercon()
+    dmem_mem = WishboneIntercon()
+    print_ack = Signal(False)
 
     toHost = Signal(modbv(0)[32:])
 
     config = cp.ConfigParser()
     config.read('Simulation/core/algol.ini')
 
-    dut_core = Core(clk_i=clk,
+    dut_core = Core(clk_i=clk,  # noqa
                     rst_i=rst,
                     imem=imem,
                     dmem=dmem,
@@ -77,15 +88,40 @@ def core_testbench(hex_file):
                     DC_SET_WIDTH=config.getint('DCache', 'SetWidth'),
                     DC_NUM_WAYS=config.getint('DCache', 'Ways'))
 
-    memory = Memory(clka_i=clk,
+    memory = Memory(clka_i=clk,  # noqa
                     rsta_i=rst,
                     imem=imem,
                     clkb_i=clk,
                     rstb_i=rst,
-                    dmem=dmem,
+                    dmem=dmem_mem,
                     SIZE=int(config.get('Memory', 'Size'), 16),
                     HEX=hex_file,
                     BYTES_X_LINE=config.getint('Memory', 'Bytes_x_line'))
+
+    @always_comb
+    def mux_address():
+        dmem_mem.addr.next  = dmem.addr
+        dmem_mem.dat_o.next = dmem.dat_o
+        dmem_mem.sel.next   = dmem.sel
+        dmem_mem.cyc.next   = dmem.cyc
+        dmem_mem.stb.next   = dmem.stb
+        dmem_mem.we.next    = False
+
+        if dmem.addr[31]:
+            dmem.dat_i.next = 0x0BADF00D
+            dmem.ack.next   = print_ack
+            dmem.err.next   = False
+        else:
+            dmem_mem.we.next = dmem.we
+            dmem.dat_i.next  = dmem_mem.dat_i
+            dmem.ack.next    = dmem_mem.ack
+            dmem.err.next    = dmem_mem.err
+
+    @always(clk.posedge)
+    def _print_ack():
+        print_ack.next = dmem.cyc and not print_ack and dmem.addr[31] and dmem.we
+        if print_ack:
+            add_buffer(chr(dmem.dat_o & 0xFF))
 
     @always(delay(int(TICK_PERIOD / 2)))
     def gen_clock():
@@ -98,6 +134,7 @@ def core_testbench(hex_file):
         """
         if toHost != 1:
             raise Error('Test failed. MTOHOST = {0}. Time = {1}'.format(toHost, now()))
+        print('\n' + buffer)
         print("Time: {0}".format(now()))
         raise StopSimulation
 
@@ -110,9 +147,10 @@ def core_testbench(hex_file):
         yield delay(RESET_TIME * TICK_PERIOD)
         rst.next = False
         yield delay(TIMEOUT * TICK_PERIOD)
+        print('\n' + buffer)
         raise Error("Test failed: Timeout")
 
-    return dut_core, memory, gen_clock, timeout, toHost_check
+    return instances()
 
 
 def test_core(hex_file, vcd):

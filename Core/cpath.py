@@ -722,6 +722,11 @@ def Ctrlpath(clk,
         else:
             if imem_m.cyc_o and imem_m.ack_i:
                 cyc_ended.next = io.full_stall
+            elif cyc_ended:
+                if io.dmem_pipeline.valid:
+                    cyc_ended.next = not dmem_m.ack_i
+                else:
+                    cyc_ended.next = io.ex_req_stall
             else:
                 cyc_ended.next = False
 

@@ -61,6 +61,14 @@ long handle_trap(long cause, long epc, long regs[32]){
         while(1);
     else if(cause != CAUSE_USER_ECALL)
         tohost_exit(1337);
+    else if(regs[17] == SYS_write){
+        char * const print_addr = (char *)0x80000000;
+        char * const buf = (char *const)regs[11];
+        const int bytes = regs[12];
+
+        for(int i = 0; i < bytes; i++)
+            *print_addr = buf[i];
+    }
     else if(regs[17] == SYS_exit)
         tohost_exit(regs[10]);
     else
@@ -78,4 +86,32 @@ int __attribute((weak)) main(int argc, char** argv){
 void _init(){
     int ret = main(0, 0);
     exit(ret);
+}
+
+#undef strlen
+int strlen(const char *s){
+    int size = 0;
+    while(s[size] != '\0')
+        size++;
+    return size;
+}
+
+void printstr(const char* s)
+{
+    syscall(SYS_write, 1, (long)s, strlen(s));
+}
+
+#undef putchar
+int putchar(int ch){
+    static char buf[64] __attribute__((aligned(64)));
+    static int buflen = 0;
+
+    buf[buflen++] = ch;
+
+    if (ch == '\n' || buflen == sizeof(buf)){
+        syscall(SYS_write, 1, (long)buf, buflen);
+        buflen = 0;
+    }
+
+    return 0;
 }

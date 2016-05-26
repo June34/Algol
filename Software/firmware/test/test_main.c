@@ -34,7 +34,10 @@ int main(int argc, char* argv[]){
     for(int i = 0; i < VECTOR_SZ; i++)
         sum += vector[i];
 
-    return sum;
+    printstr("Suma: ");
+    putchar(sum/100 + 0x30);
+    putchar((sum%100)/10 + 0x30);
+    putchar((sum%10) + 0x30);
+    putchar('\n');
+    return 0;
 }
-
-

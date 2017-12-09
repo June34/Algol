@@ -76,7 +76,10 @@ rv32*i-*
 # Verilog
 *.v
 
-
 # object files
 *.o
 *.riscv*
+*.elf
+
+# dump files
+#.dump

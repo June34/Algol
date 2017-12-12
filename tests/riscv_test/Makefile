@@ -78,4 +78,4 @@ all: $(tests_dump)
 # Clean up
 
 clean:
-	rm -rf $(junk)
+	@rm -rf $(junk) *.riscv64-unknown-elf

@@ -271,9 +271,9 @@ def CSR(clk_i, rst_i, enable_i, io, eio, core_interrupts, HART_ID, RST_ADDR, EXT
     def csr_read_proc():
         undef_reg.next = False
         if io.addr_i == CSRAddressMap.MISA:
-            mdat.next = hdl.concat(hdl.modbv(1, _nrbits=2), hdl.modbv(0, _nrbits=4), hdl.modbv(EXTENSIONS, _nrbits=26))
+            mdat.next = hdl.concat(hdl.modbv(1)[2:], hdl.modbv(0)[4:], hdl.modbv(EXTENSIONS)[26:])
         elif io.addr_i == CSRAddressMap.MHARTID:
-            mdat.next = hdl.modbv(HART_ID, _nrbits=32)
+            mdat.next = hdl.modbv(HART_ID)[32:]
         elif io.addr_i == CSRAddressMap.MVENDORID:
             mdat.next = mvendorid
         elif io.addr_i == CSRAddressMap.MARCHID:

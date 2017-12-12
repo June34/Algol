@@ -308,7 +308,10 @@ def CoreB(clk_i, rst_i, wb_port, core_interrupts, debug=None, RST_ADDR=0, HART_I
             if is_alu:
                 state.next = state_t.EX
             elif is_l or is_s:
-                wbm.addr_o.next = rs1_d + (imm_s if is_s else imm_i)
+                if is_s:
+                    wbm.addr_o.next = rs1_d + imm_s
+                else:
+                    wbm.addr_o.next = rs1_d + imm_i
                 wbm.dat_o.next  = mdat_o
                 wb_rw.next      = is_s
                 state.next = state_t.MEM
@@ -341,7 +344,6 @@ def CoreB(clk_i, rst_i, wb_port, core_interrupts, debug=None, RST_ADDR=0, HART_I
             invalid_inst.next = False
             state.next        = state_t.FETCH
         else:
-            print("[Algol CoreB] Error: Invalid state {}".format(state))
             wbm.addr_o.next = RST_ADDR
             wbm.dat_o.next  = 0
             wb_rw.next      = False
@@ -369,13 +371,21 @@ def CoreB(clk_i, rst_i, wb_port, core_interrupts, debug=None, RST_ADDR=0, HART_I
         idxb = wbm.addr_o[2:0]
         idxh = wbm.addr_o[1]
         if funct3 == LoadFunct3.LB:
-            mdat_i.next = wbm.dat_i[8 * (idxb + 1):8 * idxb].signed()
+            mdat_i.next = (wbm.dat_i[8:0].signed() if idxb == 0 else
+                           (wbm.dat_i[16:8].signed() if idxb == 1 else
+                            (wbm.dat_i[24:16].signed() if idxb == 2 else
+                             wbm.dat_i[32:24].signed())))
         elif funct3 == LoadFunct3.LBU:
-            mdat_i.next = wbm.dat_i[8 * (idxb + 1):8 * idxb]
+            mdat_i.next = (wbm.dat_i[8:0] if idxb == 0 else
+                           (wbm.dat_i[16:8] if idxb == 1 else
+                            (wbm.dat_i[24:16] if idxb == 2 else
+                             wbm.dat_i[32:24])))
         elif funct3 == LoadFunct3.LH:
-            mdat_i.next = wbm.dat_i[16 * (idxh + 1):16 * idxh].signed()
+            mdat_i.next = (wbm.dat_i[16:0].signed() if idxh == 0 else
+                           wbm.dat_i[32:16].signed())
         elif funct3 == LoadFunct3.LHU:
-            mdat_i.next = wbm.dat_i[16 * (idxh + 1):16 * idxh]
+            mdat_i.next = (wbm.dat_i[16:0] if idxh == 0 else
+                           wbm.dat_i[32:16])
         elif funct3 == LoadFunct3.LW:
             mdat_i.next = wbm.dat_i
 

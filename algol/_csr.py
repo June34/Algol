@@ -216,7 +216,7 @@ def CSR(clk_i, rst_i, enable_i, retire_i, io, eio, core_interrupts, HART_ID, RST
             mpp.next  = CSRModes.PRIV_U
             mpie.next = True
             _mie.next = mpie if mpp == CSRModes.PRIV_M else True  # TODO: check
-        elif io.addr_i == CSRAddressMap.MSTATUS:
+        elif wen and io.addr_i == CSRAddressMap.MSTATUS:
             mpp.next  = wd_aux[13:11]
             mpie.next = wd_aux[7]
             _mie.next = wd_aux[3]

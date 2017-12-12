@@ -94,7 +94,7 @@ class CSRExceptionIO:
 
 
 @hdl.block
-def CSR(clk_i, rst_i, enable_i, io, eio, core_interrupts, HART_ID, RST_ADDR, EXTENSIONS):
+def CSR(clk_i, rst_i, enable_i, retire_i, io, eio, core_interrupts, HART_ID, RST_ADDR, EXTENSIONS):
     assert isinstance(io, CSRIO)
     assert isinstance(eio, CSRExceptionIO)
     assert isinstance(core_interrupts, CoreInterrupts)
@@ -175,7 +175,7 @@ def CSR(clk_i, rst_i, enable_i, io, eio, core_interrupts, HART_ID, RST_ADDR, EXT
     @hdl.always_seq(clk_i.posedge, reset=rst_i)
     def counters_proc():
         cycle.next   = cycle + 1
-        instret.next = instret + no_trap
+        instret.next = instret + (no_trap and retire_i)
 
     # --------------------------------------------------------------------------
     # interrupts

@@ -11,6 +11,7 @@ from algol._instructions import LoadFunct3
 from algol._instructions import StoreFunct3
 from algol._instructions import ArithmeticFunct3
 from algol._instructions import SystemFunct3
+from algol._csr import ExceptionCode
 from algol._csr import CoreInterrupts
 from algol._csr import CSRIO
 from algol._csr import CSRExceptionIO
@@ -33,6 +34,7 @@ def CoreB(clk_i, rst_i, wb_port, core_interrupts, debug=None, RST_ADDR=0, HART_I
     state_t      = hdl.enum('FETCH', 'DECODE', 'EX', 'MEM', 'WB')
     state        = hdl.Signal(state_t.FETCH)
     # WB signals
+    wb_addr      = createSignal(0, 32)
     wb_rw        = createSignal(0, 1)
     wb_en        = createSignal(0, 1)
     wbm          = WishboneMaster(wb_port)
@@ -109,7 +111,14 @@ def CoreB(clk_i, rst_i, wb_port, core_interrupts, debug=None, RST_ADDR=0, HART_I
     is_lt        = createSignal(0, 1)
     is_ltu       = createSignal(0, 1)
     take_branch  = createSignal(0, 1)
+    fetch_misa   = createSignal(0, 1)
+    fetch_fault  = createSignal(0, 1)
     invalid_inst = createSignal(0, 1)
+    load_misa    = createSignal(0, 1)
+    load_fault   = createSignal(0, 1)
+    store_misa   = createSignal(0, 1)
+    store_fault  = createSignal(0, 1)
+    exception    = createSignal(0, 1)
     # Register file
     rs1_d        = createSignal(0, 32)
     rs2_d        = createSignal(0, 32)
@@ -121,9 +130,10 @@ def CoreB(clk_i, rst_i, wb_port, core_interrupts, debug=None, RST_ADDR=0, HART_I
     pc_target    = createSignal(0, 32)
     # CSR
     enable_csr   = createSignal(0, 1)
+    last_cycle   = createSignal(0, 1)
     csr_io       = CSRIO()
     csr_eio      = CSRExceptionIO()
-    csr          = CSR(clk_i=clk_i, rst_i=rst_i, enable_i=enable_csr, io=csr_io, eio=csr_eio, core_interrupts=core_interrupts,  # noqa
+    csr          = CSR(clk_i=clk_i, rst_i=rst_i, retire_i=last_cycle, enable_i=enable_csr, io=csr_io, eio=csr_eio, core_interrupts=core_interrupts,  # noqa
                        HART_ID=HART_ID, RST_ADDR=RST_ADDR, EXTENSIONS=extensions)
     # ALU
     alu_a        = createSignal(0, 32)
@@ -156,6 +166,7 @@ def CoreB(clk_i, rst_i, wb_port, core_interrupts, debug=None, RST_ADDR=0, HART_I
     def decoder_proc():
         inst_lui.next    = opcode == Opcodes.RV32_LUI
         inst_auipc.next  = opcode == Opcodes.RV32_AUIPC
+        #
         inst_jal.next    = opcode == Opcodes.RV32_JAL
         inst_jalr.next   = opcode == Opcodes.RV32_JALR
         #
@@ -301,6 +312,9 @@ def CoreB(clk_i, rst_i, wb_port, core_interrupts, debug=None, RST_ADDR=0, HART_I
                 instruction.next = wbm.dat_i
                 #
                 state.next = state_t.DECODE
+            elif exception:
+                wb_rw.next = False
+                state.next = state_t.WB
         elif state == state_t.DECODE:
             if is_csr or inst_system:
                 enable_csr.next = True
@@ -309,9 +323,9 @@ def CoreB(clk_i, rst_i, wb_port, core_interrupts, debug=None, RST_ADDR=0, HART_I
                 state.next = state_t.EX
             elif is_l or is_s:
                 if is_s:
-                    wbm.addr_o.next = rs1_d + imm_s
+                    wb_addr.next = rs1_d + imm_s
                 else:
-                    wbm.addr_o.next = rs1_d + imm_i
+                    wb_addr.next = rs1_d + imm_i
                 wbm.dat_o.next  = mdat_o
                 wb_rw.next      = is_s
                 state.next = state_t.MEM
@@ -320,7 +334,6 @@ def CoreB(clk_i, rst_i, wb_port, core_interrupts, debug=None, RST_ADDR=0, HART_I
             elif inst_fence or inst_fencei:
                 state.next = state_t.WB
             else:
-                invalid_inst.next = not (inst_lui or inst_auipc)
                 state.next = state_t.WB
         elif state == state_t.EX:
             alu_out_r.next = alu_out
@@ -328,23 +341,25 @@ def CoreB(clk_i, rst_i, wb_port, core_interrupts, debug=None, RST_ADDR=0, HART_I
         elif state == state_t.MEM:
             if wbm.ack_i:
                 state.next = state_t.WB
+            elif exception:
+                state.next = state_t.WB
         elif state == state_t.WB:
             pc.next         = pc + 4
-            wbm.addr_o.next = pc + 4
+            wb_addr.next    = pc + 4
             if is_j or (is_b and take_branch):
                 pc.next         = pc_target
-                wbm.addr_o.next = pc_target
+                wb_addr.next    = pc_target
             elif csr_eio.kill_o:
                 pc.next         = csr_eio.next_pc_o
-                wbm.addr_o.next = csr_eio.next_pc_o
+                wb_addr.next    = csr_eio.next_pc_o
             wbm.dat_o.next    = 0
             wb_rw.next        = False
             instruction.next  = 0x13  # nop
             enable_csr.next   = False
-            invalid_inst.next = False
+            # invalid_inst.next = False
             state.next        = state_t.FETCH
         else:
-            wbm.addr_o.next = RST_ADDR
+            wb_addr.next    = RST_ADDR
             wbm.dat_o.next  = 0
             wb_rw.next      = False
             state.next      = state_t.FETCH
@@ -357,19 +372,25 @@ def CoreB(clk_i, rst_i, wb_port, core_interrupts, debug=None, RST_ADDR=0, HART_I
             wb_en.next = False
 
     @hdl.always_comb
+    def wb_addr_assign_proc():
+        wbm.addr_o.next = wb_addr
+
+    # --------------------------------------------------------------------------
+    # Memory Read/Write
+    @hdl.always_comb
     def wb_write_format_proc():
         mdat_o.next    = (mdat_b if funct3 == StoreFunct3.SB else
                           (mdat_h if funct3 == StoreFunct3.SH else
                            rs2_d))
         wbm.sel_o.next = (0 if is_l else
-                          (0x1 << wbm.addr_o[2:0] if funct3 == StoreFunct3.SB else
-                           (0x3 << 2 * wbm.addr_o[1] if funct3 == StoreFunct3.SH else
+                          (0x1 << wb_addr[2:0] if funct3 == StoreFunct3.SB else
+                           (0x3 << 2 * wb_addr[1] if funct3 == StoreFunct3.SH else
                             0xF)))
 
     @hdl.always_seq(clk_i.posedge, reset=rst_i)
     def wb_read_format_proc():
-        idxb = wbm.addr_o[2:0]
-        idxh = wbm.addr_o[1]
+        idxb = wb_addr[2:0]
+        idxh = wb_addr[1]
         if funct3 == LoadFunct3.LB:
             mdat_i.next = (wbm.dat_i[8:0].signed() if idxb == 0 else
                            (wbm.dat_i[16:8].signed() if idxb == 1 else
@@ -390,7 +411,38 @@ def CoreB(clk_i, rst_i, wb_port, core_interrupts, debug=None, RST_ADDR=0, HART_I
             mdat_i.next = wbm.dat_i
 
     # --------------------------------------------------------------------------
+    # Exceptions
+    # @hdl.always_comb
+    @hdl.always_seq(clk_i.posedge, reset=rst_i)
+    def exception_flags_proc():
+        invalid_inst.next = False
+        fetch_misa.next   = False
+        fetch_fault.next  = False
+        load_misa.next    = False
+        load_fault.next   = False
+        store_misa.next   = False
+        store_fault.next  = False
+        if state == state_t.FETCH:
+            fetch_misa.next  = pc[2:0] != 0
+            fetch_fault.next = wbm.err_i
+        elif state == state_t.DECODE:
+            invalid_inst.next = not (is_j or is_b or is_l or is_s or is_alu or is_csr or inst_lui or inst_auipc or inst_system or inst_fencei or inst_fence)
+        elif state == state_t.MEM:
+            load_misa.next   = is_l and (wb_addr[0] and (funct3 == LoadFunct3.LHU or funct3 == LoadFunct3.LH)) or (wb_addr[2:] != 0 and funct3 == LoadFunct3.LW)
+            load_fault.next  = wbm.err_i and is_l
+            store_misa.next  = is_s and (wb_addr[0] and funct3 == StoreFunct3.SH) or (wb_addr[2:] != 0 and funct3 == StoreFunct3.SW)
+            store_fault.next = wbm.err_i and is_s
+
+    @hdl.always_comb
+    def exception_proc():
+        exception.next = invalid_inst or fetch_misa or fetch_fault or load_misa or load_fault or store_misa or store_fault
+
+    # --------------------------------------------------------------------------
     # CSR
+    @hdl.always_comb
+    def last_cycle_proc():
+        last_cycle.next = not exception and state == state_t.WB
+
     @hdl.always_comb
     def csr_io_proc():
         csr_io.addr_i.next   = imm12
@@ -401,9 +453,35 @@ def CoreB(clk_i, rst_i, wb_port, core_interrupts, debug=None, RST_ADDR=0, HART_I
         csr_io.c_i.next      = (inst_csrrc or inst_csrrci) and rs1 != 0
         csr_io.system_i.next = inst_system
         #
-        csr_eio.exception_pc_i.next = pc
+        csr_eio.exception_i.next = exception
+        csr_eio.exception_dat_i.next  = wb_addr
+        if fetch_misa:
+            csr_eio.exception_code_i.next = ExceptionCode.E_INST_ADDR_MISALIGNED
+        elif fetch_fault:
+            csr_eio.exception_code_i.next = ExceptionCode.E_INST_ACCESS_FAULT
+        elif load_misa:
+            csr_eio.exception_code_i.next = ExceptionCode.E_LOAD_ADDR_MISALIGNED
+        elif load_fault:
+            csr_eio.exception_code_i.next = ExceptionCode.E_LOAD_ACCESS_FAULT
+        elif store_misa:
+            csr_eio.exception_code_i.next = ExceptionCode.E_STORE_AMO_ADDR_MISALIGNED
+        elif store_fault:
+            csr_eio.exception_code_i.next = ExceptionCode.E_STORE_AMO_ACCESS_FAULT
+        else:
+            csr_eio.exception_code_i.next = ExceptionCode.E_ILLEGAL_INST
+            csr_eio.exception_dat_i.next  = instruction
+        csr_eio.exception_pc_i.next   = pc
 
     return hdl.instances()
+
+
+if __name__ == '__main__':
+    clk = createSignal(0, 1)
+    rst = hdl.ResetSignal(0, active=True, async=False)
+    wbp = WishboneIntercon()
+    ci  = CoreInterrupts()
+    core = CoreB(clk, rst, wbp, ci)
+    core.convert(testbench=False)
 
 # Local Variables:
 # flycheck-flake8-maximum-line-length: 300

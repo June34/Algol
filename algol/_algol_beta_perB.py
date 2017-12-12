@@ -234,7 +234,7 @@ def CoreB(clk_i, rst_i, wb_port, core_interrupts, debug=None, RST_ADDR=0, HART_I
         rf_wa.next = rd
         rf_we.next = False
         rf_wd.next = 0
-        if state == state_t.WB:
+        if state == state_t.WB and not exception:
             # can't latch this for now. Need to latch before WB, or make WB a 2 cycle state.
             rf_we.next = is_j or inst_auipc or inst_lui or is_l or is_alu or is_csr
             if is_j:
@@ -367,7 +367,7 @@ def CoreB(clk_i, rst_i, wb_port, core_interrupts, debug=None, RST_ADDR=0, HART_I
     @hdl.always_comb
     def wb_enable_proc():
         if state == state_t.FETCH or state == state_t.MEM:
-            wb_en.next = not wbm.ack_i
+            wb_en.next = not wbm.ack_i and not exception
         else:
             wb_en.next = False
 
@@ -412,26 +412,16 @@ def CoreB(clk_i, rst_i, wb_port, core_interrupts, debug=None, RST_ADDR=0, HART_I
 
     # --------------------------------------------------------------------------
     # Exceptions
-    # @hdl.always_comb
-    @hdl.always_seq(clk_i.posedge, reset=rst_i)
+    # @hdl.always_seq(clk_i.posedge, reset=rst_i)
+    @hdl.always_comb
     def exception_flags_proc():
-        invalid_inst.next = False
-        fetch_misa.next   = False
-        fetch_fault.next  = False
-        load_misa.next    = False
-        load_fault.next   = False
-        store_misa.next   = False
-        store_fault.next  = False
-        if state == state_t.FETCH:
-            fetch_misa.next  = pc[2:0] != 0
-            fetch_fault.next = wbm.err_i
-        elif state == state_t.DECODE:
-            invalid_inst.next = not (is_j or is_b or is_l or is_s or is_alu or is_csr or inst_lui or inst_auipc or inst_system or inst_fencei or inst_fence)
-        elif state == state_t.MEM:
-            load_misa.next   = is_l and (wb_addr[0] and (funct3 == LoadFunct3.LHU or funct3 == LoadFunct3.LH)) or (wb_addr[2:] != 0 and funct3 == LoadFunct3.LW)
-            load_fault.next  = wbm.err_i and is_l
-            store_misa.next  = is_s and (wb_addr[0] and funct3 == StoreFunct3.SH) or (wb_addr[2:] != 0 and funct3 == StoreFunct3.SW)
-            store_fault.next = wbm.err_i and is_s
+        fetch_misa.next   = pc[2:0] != 0
+        fetch_fault.next  = wbm.err_i
+        invalid_inst.next = not (is_j or is_b or is_l or is_s or is_alu or is_csr or inst_lui or inst_auipc or inst_system or inst_fencei or inst_fence)
+        load_misa.next    = is_l and ((wb_addr[0] and (funct3 == LoadFunct3.LHU or funct3 == LoadFunct3.LH)) or (wb_addr[2:] != 0 and funct3 == LoadFunct3.LW))
+        load_fault.next   = wbm.err_i and is_l
+        store_misa.next   = is_s and ((wb_addr[0] and funct3 == StoreFunct3.SH) or (wb_addr[2:] != 0 and funct3 == StoreFunct3.SW))
+        store_fault.next  = wbm.err_i and is_s
 
     @hdl.always_comb
     def exception_proc():
@@ -441,7 +431,7 @@ def CoreB(clk_i, rst_i, wb_port, core_interrupts, debug=None, RST_ADDR=0, HART_I
     # CSR
     @hdl.always_comb
     def last_cycle_proc():
-        last_cycle.next = not exception and state == state_t.WB
+        last_cycle.next = state == state_t.WB
 
     @hdl.always_comb
     def csr_io_proc():

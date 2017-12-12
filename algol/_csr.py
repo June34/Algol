@@ -208,7 +208,7 @@ def CSR(clk_i, rst_i, enable_i, retire_i, io, eio, core_interrupts, HART_ID, RST
 
     @hdl.always_seq(clk_i.posedge, reset=rst_i)
     def mstatus_mode_proc():
-        if exception or minterrupt:
+        if (exception or minterrupt) and retire_i:
             mpp.next  = priv_mode
             mpie.next = _mie
             _mie.next = False
@@ -223,17 +223,17 @@ def CSR(clk_i, rst_i, enable_i, retire_i, io, eio, core_interrupts, HART_ID, RST
 
     @hdl.always_seq(clk_i.posedge, reset=rst_i)
     def mepc_proc():
-        if exception or minterrupt:
+        if (exception or minterrupt) and retire_i:
             mepc.next = hdl.concat(eio.exception_pc_i[:2], False, False)
         elif wen and io.addr_i == CSRAddressMap.MEPC:
             mepc.next = hdl.concat(wd_aux[:2], False, False)
 
     @hdl.always_seq(clk_i.posedge, reset=rst_i)
     def mcause_proc():
-        if minterrupt:
+        if minterrupt and retire_i:
             _interrupt.next = True
             mecode.next = int_code
-        elif exception:
+        elif exception and retire_i:
             _interrupt.next = False
             mecode.next = (eio.exception_code_i if eio.exception_i else
                            (ExceptionCode.E_ECALL_FROM_U + priv_mode if xcall else
@@ -245,14 +245,14 @@ def CSR(clk_i, rst_i, enable_i, retire_i, io, eio, core_interrupts, HART_ID, RST
 
     @hdl.always_seq(clk_i.posedge, reset=rst_i)
     def mtval_proc():
-        if exception:
+        if exception and retire_i:
             mtval.next = eio.exception_dat_i  # TODO: check if this is the final value (because of internal exc)
         elif wen and io.addr_i == CSRAddressMap.MTVAL:
             mtval.next = wd_aux
 
     @hdl.always_seq(clk_i.posedge, reset=rst_i)
     def mie_w_proc():
-        if io.addr_i == CSRAddressMap.MIE:
+        if wen and io.addr_i == CSRAddressMap.MIE:
             meie.next = wd_aux[11]
             mtie.next = wd_aux[7]
             msie.next = wd_aux[3]

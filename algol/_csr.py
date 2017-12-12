@@ -210,14 +210,14 @@ def CSR(clk_i, rst_i, enable_i, retire_i, io, eio, core_interrupts, HART_ID, RST
     def mstatus_mode_proc():
         if exception or minterrupt:
             mpp.next  = priv_mode
-            mpie.next = mstatus[priv_mode]
+            mpie.next = _mie
             _mie.next = False
         elif xret:
             mpp.next  = CSRModes.PRIV_U
             mpie.next = True
-            _mie.next = mpie if mpp == CSRModes.PRIV_M else True  # TODO: check
+            _mie.next = mpie
         elif wen and io.addr_i == CSRAddressMap.MSTATUS:
-            mpp.next  = wd_aux[13:11]
+            mpp.next  = hdl.concat(wd_aux[11] or wd_aux[12], wd_aux[11] or wd_aux[12])  # 00 or 11. No other values (for now)
             mpie.next = wd_aux[7]
             _mie.next = wd_aux[3]
 
@@ -246,7 +246,7 @@ def CSR(clk_i, rst_i, enable_i, retire_i, io, eio, core_interrupts, HART_ID, RST
     @hdl.always_seq(clk_i.posedge, reset=rst_i)
     def mtval_proc():
         if exception:
-            mtval.next = eio.exception_dat_i
+            mtval.next = eio.exception_dat_i  # TODO: check if this is the final value (because of internal exc)
         elif wen and io.addr_i == CSRAddressMap.MTVAL:
             mtval.next = wd_aux
 

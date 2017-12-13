@@ -6,8 +6,8 @@ import glob
 
 def pytest_generate_tests(metafunc):
     list_elf = glob.glob("tests/riscv_test/rv32ui-p-*.elf")
-    # list_elf = list_elf + glob.glob("tests/riscv-tests/elf/rv32um-p-*")
-    # list_elf = list_elf + glob.glob("tests/riscv-tests/elf/rv32mi-p-[!b]*")
+    # list_elf = list_elf + glob.glob("tests/riscv_test/elf/rv32um-p-*")
+    list_elf = list_elf + glob.glob("tests/riscv_test/rv32mi-p-[!b]*.elf")
     # list_elf = list_elf + glob.glob("tests/riscv-tests/elf/rv32ua-p-*")
     metafunc.parametrize('elf', list_elf)
 

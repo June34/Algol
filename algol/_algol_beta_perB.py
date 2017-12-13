@@ -258,7 +258,7 @@ def CoreB(clk_i, rst_i, wb_port, core_interrupts, debug=None, RST_ADDR=0, HART_I
         if inst_jal:
             pc_target.next = pc + imm_j
         elif inst_jalr:
-            pc_target.next = rs1_d + imm_i
+            pc_target.next = (rs1_d + imm_i) & hdl.modbv(0xFFFFFFFE)[32:]
         elif inst_beq or inst_bne or inst_blt or inst_bltu or inst_bge or inst_bgeu:
             pc_target.next = pc + imm_b
 
@@ -346,12 +346,12 @@ def CoreB(clk_i, rst_i, wb_port, core_interrupts, debug=None, RST_ADDR=0, HART_I
         elif state == state_t.WB:
             pc.next         = pc + 4
             wb_addr.next    = pc + 4
-            if is_j or (is_b and take_branch):
-                pc.next         = pc_target
-                wb_addr.next    = pc_target
-            elif csr_eio.kill_o:
+            if csr_eio.kill_o:
                 pc.next         = csr_eio.next_pc_o
                 wb_addr.next    = csr_eio.next_pc_o
+            elif is_j or (is_b and take_branch):
+                pc.next         = pc_target
+                wb_addr.next    = pc_target
             wbm.dat_o.next    = 0
             wb_rw.next        = False
             instruction.next  = 0x13  # nop
@@ -415,7 +415,7 @@ def CoreB(clk_i, rst_i, wb_port, core_interrupts, debug=None, RST_ADDR=0, HART_I
     # @hdl.always_seq(clk_i.posedge, reset=rst_i)
     @hdl.always_comb
     def exception_flags_proc():
-        fetch_misa.next   = pc[2:0] != 0
+        fetch_misa.next   = pc[2:0] != 0 or ((is_j or take_branch) and pc_target[2:0] != 0)
         fetch_fault.next  = wbm.err_i
         invalid_inst.next = not (is_j or is_b or is_l or is_s or is_alu or is_csr or inst_lui or inst_auipc or inst_system or inst_fencei or inst_fence)
         load_misa.next    = is_l and ((wb_addr[0] and (funct3 == LoadFunct3.LHU or funct3 == LoadFunct3.LH)) or (wb_addr[2:] != 0 and funct3 == LoadFunct3.LW))
@@ -444,7 +444,7 @@ def CoreB(clk_i, rst_i, wb_port, core_interrupts, debug=None, RST_ADDR=0, HART_I
         csr_io.system_i.next = inst_system
         #
         csr_eio.exception_i.next = exception
-        csr_eio.exception_dat_i.next  = wb_addr
+        csr_eio.exception_dat_i.next  = pc_target if is_j or take_branch else wb_addr
         if fetch_misa:
             csr_eio.exception_code_i.next = ExceptionCode.E_INST_ADDR_MISALIGNED
         elif fetch_fault:

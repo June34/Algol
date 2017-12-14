@@ -254,12 +254,12 @@ def CoreB(clk_i, rst_i, wb_port, core_interrupts, debug=None, RST_ADDR=0, HART_I
     # branch/jump
     @hdl.always_seq(clk_i.posedge, reset=rst_i)
     def branch_jump_proc():
-        pc_target.next = 0x0bad_f00d
+        pc_target.next = pc + 4
         if inst_jal:
             pc_target.next = pc + imm_j
         elif inst_jalr:
             pc_target.next = (rs1_d + imm_i) & hdl.modbv(0xFFFFFFFE)[32:]
-        elif inst_beq or inst_bne or inst_blt or inst_bltu or inst_bge or inst_bgeu:
+        elif is_b:
             pc_target.next = pc + imm_b
 
     @hdl.always_seq(clk_i.posedge, reset=rst_i)
@@ -278,46 +278,43 @@ def CoreB(clk_i, rst_i, wb_port, core_interrupts, debug=None, RST_ADDR=0, HART_I
     # ALU
     @hdl.always_seq(clk_i.posedge, reset=rst_i)
     def alu_assign_proc():
-        if state == state_t.DECODE and is_alu:
-            alu_a.next = rs1_d
-            alu_b.next  = imm_i if (inst_addi or inst_slti or inst_sltiu or inst_xori or inst_ori or inst_andi or inst_slli or inst_srli or inst_srai) else rs2_d  # noqa
-            if inst_addi or inst_add:
-                alu_op.next = ALUOp.ADD
-            elif inst_slti or inst_slt:
-                alu_op.next = ALUOp.SLT
-            elif inst_sltiu or inst_sltu:
-                alu_op.next = ALUOp.SLTU
-            elif inst_xori or inst_xor:
-                alu_op.next = ALUOp.XOR
-            elif inst_ori or inst_or:
-                alu_op.next = ALUOp.OR
-            elif inst_andi or inst_and:
-                alu_op.next = ALUOp.AND
-            elif inst_slli or inst_sll:
-                alu_op.next = ALUOp.SLL
-            elif inst_srli or inst_srl:
-                alu_op.next = ALUOp.SRL
-            elif inst_srai or inst_sra:
-                alu_op.next = ALUOp.SRA
-            elif inst_sub:
-                alu_op.next = ALUOp.SUB
+        alu_a.next = rs1_d
+        alu_b.next  = imm_i if (inst_addi or inst_slti or inst_sltiu or inst_xori or inst_ori or inst_andi or inst_slli or inst_srli or inst_srai) else rs2_d  # noqa
+        if inst_addi or inst_add:
+            alu_op.next = ALUOp.ADD
+        elif inst_slti or inst_slt:
+            alu_op.next = ALUOp.SLT
+        elif inst_sltiu or inst_sltu:
+            alu_op.next = ALUOp.SLTU
+        elif inst_xori or inst_xor:
+            alu_op.next = ALUOp.XOR
+        elif inst_ori or inst_or:
+            alu_op.next = ALUOp.OR
+        elif inst_andi or inst_and:
+            alu_op.next = ALUOp.AND
+        elif inst_slli or inst_sll:
+            alu_op.next = ALUOp.SLL
+        elif inst_srli or inst_srl:
+            alu_op.next = ALUOp.SRL
+        elif inst_srai or inst_sra:
+            alu_op.next = ALUOp.SRA
+        elif inst_sub:
+            alu_op.next = ALUOp.SUB
 
     # --------------------------------------------------------------------------
     # FSM
     @hdl.always_seq(clk_i.posedge, reset=rst_i)
     def core_fsm_proc():
         if state == state_t.FETCH:
-            if wbm.ack_i:
-                wb_rw.next       = False
-                instruction.next = wbm.dat_i
-                #
-                state.next = state_t.DECODE
-            elif exception:
+            if exception:
                 wb_rw.next = False
                 state.next = state_t.WB
+            elif wbm.ack_i:
+                wb_rw.next       = False
+                instruction.next = wbm.dat_i
+                state.next       = state_t.DECODE
         elif state == state_t.DECODE:
-            if is_csr or inst_system:
-                enable_csr.next = True
+            enable_csr.next = is_csr or inst_system
             #
             if is_alu:
                 state.next = state_t.EX
@@ -326,22 +323,16 @@ def CoreB(clk_i, rst_i, wb_port, core_interrupts, debug=None, RST_ADDR=0, HART_I
                     wb_addr.next = rs1_d + imm_s
                 else:
                     wb_addr.next = rs1_d + imm_i
-                wbm.dat_o.next  = mdat_o
-                wb_rw.next      = is_s
-                state.next = state_t.MEM
-            elif inst_system or is_csr or is_b or is_j:
-                state.next = state_t.WB
-            elif inst_fence or inst_fencei:
-                state.next = state_t.WB
+                wbm.dat_o.next = mdat_o
+                wb_rw.next     = is_s
+                state.next     = state_t.MEM
             else:
                 state.next = state_t.WB
         elif state == state_t.EX:
             alu_out_r.next = alu_out
             state.next     = state_t.WB
         elif state == state_t.MEM:
-            if wbm.ack_i:
-                state.next = state_t.WB
-            elif exception:
+            if wbm.ack_i or exception:
                 state.next = state_t.WB
         elif state == state_t.WB:
             pc.next         = pc + 4
@@ -356,7 +347,6 @@ def CoreB(clk_i, rst_i, wb_port, core_interrupts, debug=None, RST_ADDR=0, HART_I
             wb_rw.next        = False
             instruction.next  = 0x13  # nop
             enable_csr.next   = False
-            # invalid_inst.next = False
             state.next        = state_t.FETCH
         else:
             wb_addr.next    = RST_ADDR
@@ -412,7 +402,6 @@ def CoreB(clk_i, rst_i, wb_port, core_interrupts, debug=None, RST_ADDR=0, HART_I
 
     # --------------------------------------------------------------------------
     # Exceptions
-    # @hdl.always_seq(clk_i.posedge, reset=rst_i)
     @hdl.always_comb
     def exception_flags_proc():
         fetch_misa.next   = pc[2:0] != 0 or ((is_j or take_branch) and pc_target[2:0] != 0)

@@ -3,6 +3,7 @@
 
 import myhdl as hdl
 from atik.utils import createSignal
+from atik.utils import Configuration
 from atik.system.interconnect import WishboneIntercon
 from atik.system.interconnect import WishboneMaster
 from algol._instructions import Opcodes
@@ -21,15 +22,15 @@ from algol._alu import ALU
 
 
 @hdl.block
-def CoreB(clk_i, rst_i, wb_port, core_interrupts, debug=None, RST_ADDR=0, HART_ID=0):
+def CoreB(clk_i, rst_i, wb_port, core_interrupts, debug, hart_id, config):
     """Multi-cycle RV32I Core
     """
+    assert isinstance(config, Configuration), "[Algol Core B] Error: config data mustbe of type Configuration"
     assert isinstance(wb_port, WishboneIntercon), "[Algol Core B] Error: wb_port must be of type WishboneIntercon."
     assert isinstance(core_interrupts, CoreInterrupts), "[Algol Core B] Error: core_interrupts must be of type CoreInterrupts"
-    assert isinstance(HART_ID, int), "[Algol Core B] Error: HART_ID must be of type int"
-    assert HART_ID >= 0, "[Algol Core B] Error: HART_ID must be >= 0"
+    assert hart_id >= 0, "[Algol Core B] Error: HART_ID must be >= 0"
 
-    extensions   = 1 << (ord('I') - ord('A'))
+    rst_addr     = config.getOption('Core', 'start_address')
     # FSM
     state_t      = hdl.enum('FETCH', 'DECODE', 'EX', 'MEM', 'WB')
     state        = hdl.Signal(state_t.FETCH)
@@ -40,7 +41,7 @@ def CoreB(clk_i, rst_i, wb_port, core_interrupts, debug=None, RST_ADDR=0, HART_I
     wbm          = WishboneMaster(wb_port)
     wb           = wbm.wb_master(clk_i=clk_i, rst_i=rst_i, rw_i=wb_rw, en_i=wb_en)  # noqa
     # Fetch
-    pc           = createSignal(RST_ADDR, 32)
+    pc           = createSignal(rst_addr, 32)
     instruction  = createSignal(0x13, 32)  # default value = nop instruction
     opcode       = instruction(7, 0)
     rd           = instruction(12, 7)
@@ -133,8 +134,8 @@ def CoreB(clk_i, rst_i, wb_port, core_interrupts, debug=None, RST_ADDR=0, HART_I
     last_cycle   = createSignal(0, 1)
     csr_io       = CSRIO()
     csr_eio      = CSRExceptionIO()
-    csr          = CSR(clk_i=clk_i, rst_i=rst_i, retire_i=last_cycle, enable_i=enable_csr, io=csr_io, eio=csr_eio, core_interrupts=core_interrupts,  # noqa
-                       HART_ID=HART_ID, RST_ADDR=RST_ADDR, EXTENSIONS=extensions)
+    csr          = CSR(clk_i=clk_i, rst_i=rst_i, retire_i=last_cycle, enable_i=enable_csr,  # noqa
+                       io=csr_io, eio=csr_eio, core_interrupts=core_interrupts, hart_id=hart_id, config=config)
     # ALU
     alu_a        = createSignal(0, 32)
     alu_b        = createSignal(0, 32)
@@ -349,7 +350,7 @@ def CoreB(clk_i, rst_i, wb_port, core_interrupts, debug=None, RST_ADDR=0, HART_I
             enable_csr.next   = False
             state.next        = state_t.FETCH
         else:
-            wb_addr.next    = RST_ADDR
+            wb_addr.next    = rst_addr
             wbm.dat_o.next  = 0
             wb_rw.next      = False
             state.next      = state_t.FETCH
@@ -455,11 +456,12 @@ def CoreB(clk_i, rst_i, wb_port, core_interrupts, debug=None, RST_ADDR=0, HART_I
 
 
 if __name__ == '__main__':
-    clk = createSignal(0, 1)
-    rst = hdl.ResetSignal(0, active=True, async=False)
-    wbp = WishboneIntercon()
-    ci  = CoreInterrupts()
-    core = CoreB(clk, rst, wbp, ci)
+    config = Configuration('tests/core/algol_RV32I.ini')
+    clk    = createSignal(0, 1)
+    rst    = hdl.ResetSignal(0, active=True, async=False)
+    wbp    = WishboneIntercon()
+    ci     = CoreInterrupts()
+    core   = CoreB(clk, rst, wbp, ci, None, 0, config)
     core.convert(testbench=False)
 
 # Local Variables:

@@ -3,6 +3,7 @@
 
 import myhdl as hdl
 from atik.utils import createSignal
+from atik.utils import Configuration
 
 
 class CSRAddressMap:
@@ -94,18 +95,26 @@ class CSRExceptionIO:
 
 
 @hdl.block
-def CSR(clk_i, rst_i, enable_i, retire_i, io, eio, core_interrupts, HART_ID, RST_ADDR, EXTENSIONS):
+def CSR(clk_i, rst_i, enable_i, retire_i, io, eio, core_interrupts, hart_id, config):
     assert isinstance(io, CSRIO)
     assert isinstance(eio, CSRExceptionIO)
     assert isinstance(core_interrupts, CoreInterrupts)
+    assert isinstance(config, Configuration)
 
+    # read configuration
+    extension = int(config.getOption('ISA', 'extension'), 2)
+    rst_addr  = config.getOption('Core', 'start_address')
+    enableU   = extension & (1 << 20)
+    enableS   = extension & (1 << 18)
+    assert not enableS, "[CSR] Error: Supervisor move is not supported."
+    assert enableU, "[CSR] Error: User mode is mandatory. Please, enable User mode in the configuration file."
     # CSR registers
     mvendorid  = 0
     marchid    = 0
     mimpid     = 0
     mstatus    = createSignal(0, 32)
     mie        = createSignal(0, 32)
-    mtvec      = createSignal(RST_ADDR, 32)
+    mtvec      = createSignal(rst_addr, 32)
     mscratch   = createSignal(0, 32)
     mepc       = createSignal(0, 32)
     mcause     = createSignal(0, 32)
@@ -271,9 +280,9 @@ def CSR(clk_i, rst_i, enable_i, retire_i, io, eio, core_interrupts, HART_ID, RST
     def csr_read_proc():
         undef_reg.next = False
         if io.addr_i == CSRAddressMap.MISA:
-            mdat.next = hdl.concat(hdl.modbv(1)[2:], hdl.modbv(0)[4:], hdl.modbv(EXTENSIONS)[26:])
+            mdat.next = hdl.concat(hdl.modbv(1)[2:], hdl.modbv(0)[4:], hdl.modbv(extension)[26:])
         elif io.addr_i == CSRAddressMap.MHARTID:
-            mdat.next = hdl.modbv(HART_ID)[32:]
+            mdat.next = hdl.modbv(hart_id)[32:]
         elif io.addr_i == CSRAddressMap.MVENDORID:
             mdat.next = mvendorid
         elif io.addr_i == CSRAddressMap.MARCHID:

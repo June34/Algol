@@ -6,6 +6,7 @@ import myhdl as hdl
 from atik.system import Clock
 from atik.system import Reset
 from atik.system import Timeout
+from atik.utils import Configuration
 from atik.utils import run_parser
 from atik.utils import run_testbench
 from atik.system.interconnect import WishboneIntercon
@@ -14,18 +15,19 @@ from algol._csr import CoreInterrupts
 from algol import CoreB
 
 
-def test_core(elf):
+def test_core(elf, config_file):
     """Stub for pytest
     """
-    args = argparse.Namespace(elf=elf, trace=False)
+    args = argparse.Namespace(elf=elf, config_file=config_file, trace=False)
     core_testbench(args)
 
 
 def core_testbench(args=None):
+    config    = Configuration(args.config_file)
     timescale = 1e-9
     freq      = 10e6
-    MEMSIZE   = 0x20000
-    tohost    = 0x1000
+    memsize   = config.getOption('Memory', 'size')
+    tohost    = config.getOption('tohost', 'address')
     clk       = Clock(0, freq=freq, timescale=timescale)
     rst       = Reset(0, active=True, async=False)
     timeout   = Timeout(1e6)
@@ -36,8 +38,9 @@ def core_testbench(args=None):
         core_interrupts = CoreInterrupts()
         clkgen          = clk.clk_gen()  # noqa
         tout            = timeout.timeout_gen()  # noqa
-        memory          = WBMemorySP(clk_i=clk, rst_i=rst, io_port=wb_port, SIZE=MEMSIZE, ELF_FILE=args.elf, NUM_CYC=1)  # noqa
-        core            = CoreB(clk_i=clk, rst_i=rst, wb_port=wb_port, core_interrupts=core_interrupts)  # noqa
+        memory          = WBMemorySP(clk_i=clk, rst_i=rst, io_port=wb_port, SIZE=memsize, ELF_FILE=args.elf, NUM_CYC=1)  # noqa
+        core            = CoreB(clk_i=clk, rst_i=rst, wb_port=wb_port, core_interrupts=core_interrupts,  # noqa
+                                debug=None, hart_id=0, config=config)
 
         @hdl.instance
         def rst_pulse():
@@ -58,7 +61,7 @@ def core_testbench(args=None):
 
 
 if __name__ == '__main__':
-    args = run_parser(extra_ops=[('--elf', dict(required=True))])
+    args = run_parser(extra_ops=[('--elf', dict(required=True)), ('--config-file', dict(required=True))])
     core_testbench(args)
     print('[TEST-ALGOL-CORE-B] Test: Ok')
 

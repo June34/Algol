@@ -235,7 +235,7 @@ def CoreB(clk_i, rst_i, wb_port, core_interrupts, debug, hart_id, config):
         rf_wa.next = rd
         rf_we.next = False
         rf_wd.next = 0
-        if state == state_t.WB and not exception:
+        if state == state_t.WB and not csr_eio.kill_o:
             # can't latch this for now. Need to latch before WB, or make WB a 2 cycle state.
             rf_we.next = is_j or inst_auipc or inst_lui or is_l or is_alu or is_csr
             if is_j:

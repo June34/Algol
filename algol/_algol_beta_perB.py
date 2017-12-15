@@ -17,8 +17,6 @@ from algol._csr import CoreInterrupts
 from algol._csr import CSRIO
 from algol._csr import CSRExceptionIO
 from algol._csr import CSR
-from algol._alu import ALUOp
-from algol._alu import ALU
 
 
 @hdl.block
@@ -140,9 +138,9 @@ def CoreB(clk_i, rst_i, wb_port, core_interrupts, debug, hart_id, config):
     alu_a        = createSignal(0, 32)
     alu_b        = createSignal(0, 32)
     alu_out      = createSignal(0, 32)
-    alu_out_r    = createSignal(0, 32)
-    alu_op       = createSignal(0, ALUOp.SZ_OP)
-    alu          = ALU(a_i=alu_a, b_i=alu_b, op_i=alu_op, res_o=alu_out)  # noqa
+    # alu_out_r    = createSignal(0, 32)
+    # alu_op       = createSignal(0, ALUOp.SZ_OP)
+    # alu          = ALU(a_i=alu_a, b_i=alu_b, op_i=alu_op, res_o=alu_out)  # noqa
     # memory
     mdat_b       = hdl.ConcatSignal(rs2_d(8, 0), rs2_d(8, 0), rs2_d(8, 0), rs2_d(8, 0))
     mdat_h       = hdl.ConcatSignal(rs2_d(16, 0), rs2_d(16, 0))
@@ -247,7 +245,7 @@ def CoreB(clk_i, rst_i, wb_port, core_interrupts, debug, hart_id, config):
             elif is_l:
                 rf_wd.next = mdat_i
             elif is_alu:
-                rf_wd.next = alu_out_r
+                rf_wd.next = alu_out
             elif is_csr:
                 rf_wd.next = csr_io.rdat_o
 
@@ -282,25 +280,25 @@ def CoreB(clk_i, rst_i, wb_port, core_interrupts, debug, hart_id, config):
         alu_a.next = rs1_d
         alu_b.next  = imm_i if (inst_addi or inst_slti or inst_sltiu or inst_xori or inst_ori or inst_andi or inst_slli or inst_srli or inst_srai) else rs2_d  # noqa
         if inst_addi or inst_add:
-            alu_op.next = ALUOp.ADD
+            alu_out.next = alu_a + alu_b
         elif inst_slti or inst_slt:
-            alu_op.next = ALUOp.SLT
+            alu_out.next = hdl.concat(hdl.modbv(0)[31:], alu_a.signed() < alu_b.signed())
         elif inst_sltiu or inst_sltu:
-            alu_op.next = ALUOp.SLTU
+            alu_out.next = hdl.concat(hdl.modbv(0)[31:], alu_a < alu_b)
         elif inst_xori or inst_xor:
-            alu_op.next = ALUOp.XOR
+            alu_out.next = alu_a ^ alu_b
         elif inst_ori or inst_or:
-            alu_op.next = ALUOp.OR
+            alu_out.next = alu_a | alu_b
         elif inst_andi or inst_and:
-            alu_op.next = ALUOp.AND
+            alu_out.next = alu_a & alu_b
         elif inst_slli or inst_sll:
-            alu_op.next = ALUOp.SLL
+            alu_out.next = alu_a << alu_b[5:]
         elif inst_srli or inst_srl:
-            alu_op.next = ALUOp.SRL
+            alu_out.next = alu_a >> alu_b[5:]
         elif inst_srai or inst_sra:
-            alu_op.next = ALUOp.SRA
+            alu_out.next = alu_a.signed() >> alu_b[5:]
         elif inst_sub:
-            alu_op.next = ALUOp.SUB
+            alu_out.next = alu_a - alu_b
 
     # --------------------------------------------------------------------------
     # FSM
@@ -330,7 +328,7 @@ def CoreB(clk_i, rst_i, wb_port, core_interrupts, debug, hart_id, config):
             else:
                 state.next = state_t.WB
         elif state == state_t.EX:
-            alu_out_r.next = alu_out
+            # alu_out_r.next = alu_out
             state.next     = state_t.WB
         elif state == state_t.MEM:
             if wbm.ack_i or exception:

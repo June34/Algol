@@ -45,8 +45,8 @@ def CoreB(clk_i, rst_i, wb_port, core_interrupts, debug, hart_id, config):
     rd           = instruction(12, 7)
     funct3       = instruction(15, 12)
     funct7       = instruction(32, 25)
-    rs1          = instruction(20, 15)
-    rs2          = instruction(25, 20)
+    rs1_f        = instruction(20, 15)
+    rs2_f        = instruction(25, 20)
     imm12        = instruction(32, 20)
     imm_i        = hdl.ConcatSignal(*[instruction(31) for _ in range(21)], instruction(31, 20))
     imm_s        = hdl.ConcatSignal(*[instruction(31) for _ in range(21)], instruction(31, 25), instruction(12, 7))
@@ -119,6 +119,8 @@ def CoreB(clk_i, rst_i, wb_port, core_interrupts, debug, hart_id, config):
     store_fault  = createSignal(0, 1)
     exception    = createSignal(0, 1)
     # Register file
+    rs1          = createSignal(0, 32)
+    rs2          = createSignal(0, 32)
     rs1_d        = createSignal(0, 32)
     rs2_d        = createSignal(0, 32)
     rf_wa        = createSignal(0, 5)
@@ -138,9 +140,6 @@ def CoreB(clk_i, rst_i, wb_port, core_interrupts, debug, hart_id, config):
     alu_a        = createSignal(0, 32)
     alu_b        = createSignal(0, 32)
     alu_out      = createSignal(0, 32)
-    # alu_out_r    = createSignal(0, 32)
-    # alu_op       = createSignal(0, ALUOp.SZ_OP)
-    # alu          = ALU(a_i=alu_a, b_i=alu_b, op_i=alu_op, res_o=alu_out)  # noqa
     # memory
     mdat_b       = hdl.ConcatSignal(rs2_d(8, 0), rs2_d(8, 0), rs2_d(8, 0), rs2_d(8, 0))
     mdat_h       = hdl.ConcatSignal(rs2_d(16, 0), rs2_d(16, 0))
@@ -150,6 +149,14 @@ def CoreB(clk_i, rst_i, wb_port, core_interrupts, debug, hart_id, config):
     # --------------------------------------------------------------------------
     # RF
     @hdl.always_comb
+    def rsx_select_proc():
+        rs1.next = rs1_f
+        rs2.next = rs2_f
+        if state == state_t.FETCH:
+            rs1.next = wbm.dat_i[20:15]
+            rs2.next = wbm.dat_i[25:20]
+
+    @hdl.always_seq(clk_i.posedge, reset=rst_i)
     def rf_read_proc():
         rs1_d.next = regfile[rs1] if rs1 != 0 else 0
         rs2_d.next = regfile[rs2] if rs2 != 0 else 0
@@ -328,7 +335,6 @@ def CoreB(clk_i, rst_i, wb_port, core_interrupts, debug, hart_id, config):
             else:
                 state.next = state_t.WB
         elif state == state_t.EX:
-            # alu_out_r.next = alu_out
             state.next     = state_t.WB
         elif state == state_t.MEM:
             if wbm.ack_i or exception:

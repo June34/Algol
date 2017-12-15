@@ -8,6 +8,11 @@ from atik.utils import Configuration
 
 class CSRAddressMap:
     SZ_ADDR     = 12
+    CYCLE       = 0xC00
+    INSTRET     = 0xC02
+    CYCLEH      = 0xC80
+    INSTRETH    = 0xC82
+    #
     MVENDORID   = 0xF11
     MARCHID     = 0xF12
     MIMPID      = 0xF13
@@ -199,7 +204,7 @@ def CSR(clk_i, rst_i, enable_i, retire_i, io, eio, core_interrupts, hart_id, con
     # priv mode
     @hdl.always_seq(clk_i.posedge, reset=rst_i)
     def priv_mode_proc():
-        if exception or minterrupt:
+        if (exception or minterrupt) and retire_i:
             priv_mode.next = CSRModes.PRIV_M
         elif xret:
             priv_mode.next = mpp
@@ -305,13 +310,13 @@ def CSR(clk_i, rst_i, enable_i, retire_i, io, eio, core_interrupts, hart_id, con
             mdat.next = mtval
         elif io.addr_i == CSRAddressMap.MIP:
             mdat.next = mip
-        elif io.addr_i == CSRAddressMap.MCYCLE:
+        elif io.addr_i == CSRAddressMap.MCYCLE or io.addr_i == CSRAddressMap.CYCLE:
             mdat.next = cycle[32:0]
-        elif io.addr_i == CSRAddressMap.MINSTRET:
+        elif io.addr_i == CSRAddressMap.MINSTRET or io.addr_i == CSRAddressMap.INSTRET:
             mdat.next = instret[32:0]
-        elif io.addr_i == CSRAddressMap.MCYCLEH:
+        elif io.addr_i == CSRAddressMap.MCYCLEH or io.addr_i == CSRAddressMap.CYCLEH:
             mdat.next = cycle[64:32]
-        elif io.addr_i == CSRAddressMap.MINSTRETH:
+        elif io.addr_i == CSRAddressMap.MINSTRETH or io.addr_i == CSRAddressMap.CYCLEH:
             mdat.next = instret[64:32]
         else:
             mdat.next = 0

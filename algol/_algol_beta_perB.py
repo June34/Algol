@@ -381,18 +381,28 @@ def CoreB(clk_i, rst_i, wb_port, core_interrupts, debug, hart_id, config):
 
     # --------------------------------------------------------------------------
     # register file
+    _rs1 = createSignal(0, 5)
+    _rs2 = createSignal(0, 5)
+    _rwa = createSignal(0, 5)
+    _rwa._markRead()
+    inst_writes = createSignal(0, 1)
+    wb_data     = createSignal(0, 32)
+
     @hdl.always_seq(clk_i.posedge, reset=rst_i)
     def rf_read_proc():
-        rs1_d.next = regfile[rs1_q if state == state_t.FETCH else rs1] if rs1_q != 0 else 0
-        rs2_d.next = regfile[rs2_q if state == state_t.FETCH else rs2] if rs2_q != 0 else 0
+        rs1_d.next = regfile[_rs1] if _rs1 != 0 else 0
+        rs2_d.next = regfile[_rs2] if _rs2 != 0 else 0
 
     @hdl.always(clk_i.posedge)
     def rf_write_proc():
         if rf_we and rd != 0:
             regfile[rd].next = rf_wd
 
-    inst_writes = createSignal(0, 1)
-    wb_data     = createSignal(0, 32)
+    @hdl.always_comb
+    def fuck_proc():
+        _rs1.next = rs1_q if state == state_t.FETCH else rs1
+        _rs2.next = rs2_q if state == state_t.FETCH else rs2
+        _rwa.next = rd
 
     @hdl.always(clk_i.posedge)
     def inst_writes_rf_proc():
@@ -663,14 +673,66 @@ def CoreB(clk_i, rst_i, wb_port, core_interrupts, debug, hart_id, config):
     return hdl.instances()
 
 
-if __name__ == '__main__':
-    config = Configuration('tests/core/algol_RV32I.ini')
-    clk    = createSignal(0, 1)
-    rst    = hdl.ResetSignal(0, active=True, async=False)
+@hdl.block
+def CoreB_HDL(clk_i, rst_i,
+              wbm_addr_o, wbm_dat_o, wbm_dat_i, wbm_sel_o, wbm_cyc_o, wbm_we_o, wbm_stb_o, wbm_ack_i, wbm_err_i,
+              meip_i, mtip_i, msip_i, hart_id, config):
+    """Algol Core B
+
+    For sysnthesis and cosimulation.
+    """
+    assert isinstance(config, Configuration), "[Algol Core B] Error: config data mustbe of type Configuration"
+    assert hart_id >= 0, "[Algol Core B] Error: HART_ID must be >= 0"
+
     wbp    = WishboneIntercon()
     ci     = CoreInterrupts()
-    core   = CoreB(clk, rst, wbp, ci, None, 0, config)
-    core.convert(testbench=False)
+    core   = CoreB(clk_i=clk_i, rst_i=rst_i, wb_port=wbp, core_interrupts=ci, debug=None, hart_id=hart_id, config=config)  # noqa
+
+    @hdl.always_comb
+    def port_assign_proc():
+        wbm_addr_o.next = wbp.addr
+        wbm_dat_o.next  = wbp.dat_o
+        wbm_sel_o.next  = wbp.sel
+        wbm_cyc_o.next  = wbp.cyc
+        wbm_we_o.next   = wbp.we
+        wbm_stb_o.next  = wbp.stb
+        wbp.dat_i.next  = wbm_dat_i
+        wbp.ack.next    = wbm_ack_i
+        wbp.err.next    = wbm_err_i
+        ci.meip.next    = meip_i
+        ci.mtip.next    = mtip_i
+        ci.msip.next    = msip_i
+
+    return hdl.instances()
+
+
+def generate_verilog(name, path, config_file, trace, testbench):
+    config = Configuration(config_file)
+    clk             = createSignal(0, 1)
+    rst             = hdl.ResetSignal(0, active=True, async=False)
+    wb_port         = WishboneIntercon()
+    core_interrupts = CoreInterrupts()
+    core = CoreB_HDL(clk_i=clk,
+                     rst_i=rst,
+                     wbm_addr_o=wb_port.addr,
+                     wbm_dat_o=wb_port.dat_o,
+                     wbm_dat_i=wb_port.dat_i,
+                     wbm_sel_o=wb_port.sel,
+                     wbm_cyc_o=wb_port.cyc,
+                     wbm_we_o=wb_port.we,
+                     wbm_stb_o=wb_port.stb,
+                     wbm_ack_i=wb_port.ack,
+                     wbm_err_i=wb_port.err,
+                     meip_i=core_interrupts.meip,
+                     mtip_i=core_interrupts.mtip,
+                     msip_i=core_interrupts.msip,
+                     hart_id=0,
+                     config=config)
+    core.convert(path=path, name=name, trace=trace, testbench=testbench)
+
+
+if __name__ == '__main__':
+    generate_verilog('CoreB', '.', 'tests/core/algol_RV32I.ini', False, False)
 
 # Local Variables:
 # flycheck-flake8-maximum-line-length: 300

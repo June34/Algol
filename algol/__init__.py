@@ -2,3 +2,4 @@
 
 from algol._algol_beta_perA import CoreA  # noqa
 from algol._algol_beta_perB import CoreB  # noqa
+from algol._algol_beta_perB import generate_verilog  # noqa

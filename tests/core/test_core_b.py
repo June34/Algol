@@ -38,7 +38,7 @@ def core_testbench(args=None):
         core_interrupts = CoreInterrupts()
         clkgen          = clk.clk_gen()  # noqa
         tout            = timeout.timeout_gen()  # noqa
-        memory          = WBMemorySP(clk_i=clk, rst_i=rst, io_port=wb_port, SIZE=memsize, ELF_FILE=args.elf, NUM_CYC=1)  # noqa
+        memory          = WBMemorySP(clk_i=clk, rst_i=rst, io_port=wb_port, SIZE=memsize, ELF_FILE=args.elf)  # noqa
         core            = CoreB(clk_i=clk, rst_i=rst, wb_port=wb_port, core_interrupts=core_interrupts,  # noqa
                                 debug=None, hart_id=0, config=config)
 

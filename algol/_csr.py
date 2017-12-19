@@ -151,7 +151,9 @@ def CSR(clk_i, rst_i, retire_i, enable_i, ack_o, io, eio, core_interrupts, hart_
     xret         = createSignal(0, 1)
     ill_access   = createSignal(0, 1)
     exception    = createSignal(0, 1)  #
+    exception2   = createSignal(0, 1)  #
     minterrupt   = createSignal(0, 1)  #
+    minterrupt2  = createSignal(0, 1)  #
     int_code     = createSignal(0, ExceptionCode.SZ_ECODE)  #
     no_trap      = createSignal(0, 1)
     #
@@ -180,7 +182,7 @@ def CSR(clk_i, rst_i, retire_i, enable_i, ack_o, io, eio, core_interrupts, hart_
     @hdl.always_seq(clk_i.posedge, reset=rst_i)
     def delay_proc():
         if enable_i and not (exception or minterrupt or xret):
-            delay.next = hdl.concat(delay[3:0], enable_i and delay == 0)
+            delay.next = hdl.concat(delay[3:0], delay == 0)
         else:
             delay.next = 0
 
@@ -252,12 +254,14 @@ def CSR(clk_i, rst_i, retire_i, enable_i, ack_o, io, eio, core_interrupts, hart_
     # interrupts
     @hdl.always_seq(clk_i.posedge, reset=rst_i)
     def exception_proc():
-        exception.next = eio.exception_i or ill_access or xcall or xbreak
-        no_trap.next   = not (eio.exception_i or ill_access or minterrupt)
+        exception.next  = eio.exception_i or ill_access or xcall or xbreak
+        exception2.next = eio.exception_i or ill_access or xcall or xbreak
+        no_trap.next    = not (eio.exception_i or ill_access or minterrupt)
 
     @hdl.always_seq(clk_i.posedge, reset=rst_i)
     def interrupt_proc():
-        minterrupt.next = enable_i and (pend_int[11] or pend_int[7] or pend_int[3])
+        minterrupt.next  = enable_i and (pend_int[11] or pend_int[7] or pend_int[3])
+        minterrupt2.next = enable_i and (pend_int[11] or pend_int[7] or pend_int[3])
         if pend_int[11]:
             int_code.next = ExceptionCode.I_M_EXTERNAL
         elif pend_int[7]:
@@ -379,14 +383,10 @@ def CSR(clk_i, rst_i, retire_i, enable_i, ack_o, io, eio, core_interrupts, hart_
             mdat.next = mtval
         elif is_mip:
             mdat.next = mip
-        elif is_cycle:
-            mdat.next = cycle[32:0]
-        elif is_instret:
-            mdat.next = instret[32:0]
-        elif is_cycleh:
-            mdat.next = cycle[64:32]
-        elif is_instreth:
-            mdat.next = instret[64:32]
+        elif is_cycle or is_cycleh:
+            mdat.next = cycle[32:0] if is_cycle else cycle[64:32]
+        elif is_instret or is_instreth:
+            mdat.next = instret[32:0] if is_instret else instret[64:32]
         else:
             mdat.next = 0
             undef_reg.next = enable_i and delay != 0
@@ -397,7 +397,7 @@ def CSR(clk_i, rst_i, retire_i, enable_i, ack_o, io, eio, core_interrupts, hart_
     def io_assign_proc():
         io.rdat_o.next     = mdat
         eio.next_pc_o.next = mtvec if exception or minterrupt else mepc
-        eio.kill_o.next    = enable_i and (exception or minterrupt or xret)
+        eio.kill_o.next    = exception2 or minterrupt2 or xret
 
     return hdl.instances()
 
